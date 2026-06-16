@@ -1,0 +1,123 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Packo",
+  "version": "0.1.0",
+  "identifier": "com.packo.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Packo",
+        "width": 760,
+        "height": 520,
+        "visible": false,
+        "backgroundColor": "#fffdf9",
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 20,
+          "y": 35
+        },
+        "center": true,
+        "resizable": true,
+        "minWidth": 700,
+        "minHeight": 480
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "icons/packo-document.icns": "packo-document.icns"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "zip",
+          "7z",
+          "rar",
+          "tar",
+          "gz",
+          "gzip",
+          "bz2",
+          "bzip2",
+          "xz",
+          "tgz",
+          "tbz",
+          "tbz2",
+          "txz",
+          "lzh",
+          "lha",
+          "z",
+          "zst",
+          "zstd",
+          "lzma",
+          "lzma2",
+          "lz4",
+          "iso",
+          "001",
+          "z01",
+          "z02",
+          "z03",
+          "z04",
+          "z05"
+        ],
+        "contentTypes": [
+          "public.archive",
+          "com.apple.archive",
+          "public.zip-archive",
+          "com.pkware.zip-archive",
+          "org.7-zip.7-zip-archive",
+          "com.rarlab.rar-archive",
+          "public.tar-archive",
+          "org.gnu.gnu-tar-archive",
+          "org.gnu.gnu-zip-archive",
+          "org.gnu.gnu-zip-tar-archive",
+          "public.bzip2-archive",
+          "public.tar-bzip2-archive",
+          "org.bzip.bzip2-archive",
+          "org.bzip.bzip2-tar-archive",
+          "org.tukaani.xz-archive",
+          "org.tukaani.tar-xz-archive",
+          "public.xz-archive",
+          "public.tar-xz-archive",
+          "public.z-archive",
+          "com.facebook.zstandard-archive",
+          "com.facebook.zstandard-tar-archive",
+          "org.tukaani.lzma-archive",
+          "public.lzma-archive",
+          "public.lz4-archive",
+          "public.lz4-tar-archive",
+          "public.iso-image",
+          "public.archive.lha",
+          "com.bandisoft.001"
+        ],
+        "name": "Packo 压缩包",
+        "description": "Packo 支持的压缩包",
+        "role": "Viewer",
+        "rank": "Owner"
+      }
+    ],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
+  }
+}
