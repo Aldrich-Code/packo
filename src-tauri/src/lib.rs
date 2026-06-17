@@ -1590,12 +1590,7 @@ fn list_archive(path: String, password: Option<String>) -> Result<ArchiveInfo, S
     let mut entries = if is_single_stream_format(&archive_path) {
         vec![single_stream_entry(&archive_path)?]
     } else {
-        let mut args = Vec::new();
-        append_archive_password_args(&mut args, password.as_deref());
-        args.push(OsString::from("-tvf"));
-        args.push(read_archive_path.as_os_str().to_os_string());
-        let output = run_command("bsdtar", args.iter().map(|arg| arg.as_os_str()), None)?;
-        parse_archive_listing(&output)
+        read_archive_listing_entries(read_archive_path, password.as_deref())?
     };
     apply_archive_entry_details(read_archive_path, &mut entries);
     let archive_is_encrypted =
@@ -4368,28 +4363,24 @@ fn list_archive_entries_for_task(
     password: Option<&str>,
 ) -> Result<Vec<ExtractTaskEntry>, String> {
     let prepared_archive = prepare_archive_for_read(archive_path)?;
-    let mut args = Vec::new();
-    append_archive_password_args(&mut args, password);
-    args.push(OsString::from("-tvf"));
-    args.push(prepared_archive.path().as_os_str().to_os_string());
-    let output = run_command("bsdtar", args.iter().map(|arg| arg.as_os_str()), None)?;
-
-    Ok(parse_archive_listing(&output)
-        .into_iter()
-        .map(|entry| ExtractTaskEntry {
-            display_path: strip_archive_entry_prefix(&entry.path)
-                .to_string_lossy()
-                .to_string(),
-            path: entry.path,
-            size: if entry.kind == "folder" {
-                1
-            } else {
-                entry.size.max(1)
-            },
-            is_dir: entry.kind == "folder",
-            is_unsafe_path: entry.is_unsafe_path,
-        })
-        .collect())
+    Ok(
+        read_archive_listing_entries(prepared_archive.path(), password)?
+            .into_iter()
+            .map(|entry| ExtractTaskEntry {
+                display_path: strip_archive_entry_prefix(&entry.path)
+                    .to_string_lossy()
+                    .to_string(),
+                path: entry.path,
+                size: if entry.kind == "folder" {
+                    1
+                } else {
+                    entry.size.max(1)
+                },
+                is_dir: entry.kind == "folder",
+                is_unsafe_path: entry.is_unsafe_path,
+            })
+            .collect(),
+    )
 }
 
 fn run_extract_task(
@@ -5085,31 +5076,85 @@ fn directory_size(path: &Path) -> Result<u64, String> {
     Ok(total)
 }
 
-fn parse_archive_listing(output: &str) -> Vec<ArchiveEntry> {
-    output
+fn read_archive_listing_entries(
+    archive_path: &Path,
+    password: Option<&str>,
+) -> Result<Vec<ArchiveEntry>, String> {
+    let mut path_args = Vec::new();
+    append_archive_password_args(&mut path_args, password);
+    path_args.push(OsString::from("-tf"));
+    path_args.push(archive_path.as_os_str().to_os_string());
+    let path_output = run_command("bsdtar", path_args.iter().map(|arg| arg.as_os_str()), None)?;
+
+    let mut detail_args = Vec::new();
+    append_archive_password_args(&mut detail_args, password);
+    detail_args.push(OsString::from("-tvf"));
+    detail_args.push(archive_path.as_os_str().to_os_string());
+    let detail_output = run_command(
+        "bsdtar",
+        detail_args.iter().map(|arg| arg.as_os_str()),
+        None,
+    )
+    .unwrap_or_default();
+
+    Ok(parse_archive_listing(&path_output, &detail_output))
+}
+
+#[derive(Debug, Clone)]
+struct ArchiveListingDetail {
+    permissions: String,
+    size: u64,
+    modified_label: String,
+}
+
+fn parse_archive_listing_detail(line: &str) -> Option<ArchiveListingDetail> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    let permissions = parts.first()?.to_string();
+    let Some(date_index) = parts.iter().position(|part| is_archive_month(part)) else {
+        return Some(ArchiveListingDetail {
+            permissions,
+            size: 0,
+            modified_label: "-".to_string(),
+        });
+    };
+    if date_index < 1 || parts.len() <= date_index + 2 {
+        return Some(ArchiveListingDetail {
+            permissions,
+            size: 0,
+            modified_label: "-".to_string(),
+        });
+    }
+
+    Some(ArchiveListingDetail {
+        permissions,
+        size: parts[date_index - 1].parse::<u64>().unwrap_or(0),
+        modified_label: archive_listing_time_label(
+            parts[date_index],
+            parts[date_index + 1],
+            parts[date_index + 2],
+        ),
+    })
+}
+
+fn parse_archive_listing(path_output: &str, detail_output: &str) -> Vec<ArchiveEntry> {
+    let details: Vec<Option<ArchiveListingDetail>> = detail_output
         .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 9 {
+        .map(parse_archive_listing_detail)
+        .collect();
+
+    path_output
+        .lines()
+        .enumerate()
+        .filter_map(|(index, raw_path)| {
+            let path = raw_path.trim_end_matches('\r').to_string();
+            if path.trim().is_empty() {
                 return None;
             }
 
-            let permissions = parts[0];
-            let date_index = parts
-                .iter()
-                .position(|part| is_archive_month(part))
-                .unwrap_or(5);
-            if date_index < 1 || parts.len() <= date_index + 3 {
-                return None;
-            }
-
-            let size = parts[date_index - 1].parse::<u64>().unwrap_or(0);
-            let modified_label = archive_listing_time_label(
-                parts[date_index],
-                parts[date_index + 1],
-                parts[date_index + 2],
-            );
-            let path = parts[date_index + 3..].join(" ");
+            let detail = details.get(index).and_then(|detail| detail.as_ref());
+            let permissions = detail
+                .map(|detail| detail.permissions.as_str())
+                .unwrap_or("");
             let display_path = path.trim_end_matches('/').to_string();
             let name = Path::new(&display_path)
                 .file_name()
@@ -5126,6 +5171,10 @@ fn parse_archive_listing(output: &str) -> Vec<ArchiveEntry> {
             let is_executable =
                 !is_folder && archive_entry_is_executable(&display_path, permissions);
             let is_unsafe_path = archive_entry_has_unsafe_path(&path);
+            let size = detail.map(|detail| detail.size).unwrap_or(0);
+            let modified_label = detail
+                .map(|detail| detail.modified_label.clone())
+                .unwrap_or_else(|| "-".to_string());
 
             let type_label = if is_folder {
                 "文件夹".to_string()
@@ -7346,6 +7395,31 @@ mod tests {
             archive_listing_time_label("May", "6", "2024"),
             "2024年5月6日 00:00"
         );
+    }
+
+    #[test]
+    fn parses_archive_paths_from_plain_listing_output() {
+        let path_output = "\
+开发A2501-清风润学子，廉洁启新程/
+开发A2501-清风润学子，廉洁启新程/开发A2501.mp4
+开发A2501-清风润学子，廉洁启新程/开发A2501-清风润学子，廉洁启新程.pptx
+";
+        let detail_output = "\
+drwxr-xr-x  0 501    20          0 Jun 17 11:08 开发A2501-清风润学子，廉洁启新程/
+-r--r--r--  0 501    20    6556043 Jun 16 20:55 开发A2501-清风润学子，廉洁启新程/开发A2501.mp4
+-rw-r--r--  0 501    20   17013269 Jun 17 09:33 开发A2501-清风润学子，廉洁启新程/开发A2501-清风润学子，廉洁启新程.pptx
+";
+
+        let entries = parse_archive_listing(path_output, detail_output);
+
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].name, "开发A2501-清风润学子，廉洁启新程");
+        assert_eq!(
+            entries[1].path,
+            "开发A2501-清风润学子，廉洁启新程/开发A2501.mp4"
+        );
+        assert_eq!(entries[1].size, 6_556_043);
+        assert_eq!(entries[2].name, "开发A2501-清风润学子，廉洁启新程.pptx");
     }
 
     #[test]
