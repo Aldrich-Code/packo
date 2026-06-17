@@ -1,7 +1,8 @@
 # Packo
 
 Packo 是一款为 macOS 设计的压缩包管理工具，支持压缩、解压、预览、编辑压缩包、拖拽导出、最近文件和常用压缩格式关联。它希望把压缩包操作做得像管理普通文件夹一样自然。
-> ![认可linux.do][https://ld.xh.do/ld-badge.svg](https://linux.do/)
+> [![认可linux.do](https://ld.xh.do/ld-badge.svg)](https://linux.do/)
+
 
 > 当前项目仍在快速迭代中，功能和界面可能会持续调整。
 <img width="812" height="592" alt="Screenshot 2026-06-16 at 10 08 28 PM" src="https://github.com/user-attachments/assets/a06df692-e473-4d8f-b06a-e1fe824452d0" />
